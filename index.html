@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar System Site</title>
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+
+/* =====================================================
+   3D空間そのもの。
+   閲覧者（カメラ）は太陽の真上・高さ900pxの一点に固定され、
+   首の回転（pitch/yaw）だけで見回す。
+   太陽系もBOXもすべてこの空間内の固定位置にある。
+   ===================================================== */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+  --line: #fff;
+  transition: background 1.8s ease;
+  perspective: 900px;
+  perspective-origin: 50% 50%;
+  overflow: hidden;
+}
+
+.stage.is-on {
+  background: #fff;
+  --line: #333;
+}
+
+.stage.is-live {
+  cursor: grab;
+}
+
+.stage.is-dragging {
+  cursor: grabbing;
+}
+
+/* 世界。JSが「首の回転」の逆変換を与える */
+.world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* ===== 床 = 太陽系。カメラの真下900pxに水平に固定 ===== */
+.floor-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(90deg) translateZ(-900px);
+}
+
+.solar-system {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(600px, 90vmin);
+  height: min(600px, 90vmin);
+  transform: translate(-50%, -50%);
+}
+
+.orbits {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.orbits circle {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.5;
+  transition: stroke 1.8s ease;
+}
+
+.planet-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  animation-name: spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.planet {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  background: var(--line);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: background 1.8s ease;
+}
+
+/* 反時計回りの公転 */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+.sun {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16%;
+  height: 16%;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid var(--line);
+  color: var(--line);
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.3s ease, color 0.3s ease, border-color 1.8s ease;
+}
+
+.sun:hover {
+  background: #fff;
+  color: #000;
+}
+
+.is-on .sun:hover {
+  background: transparent;
+  color: var(--line);
+}
+
+/* ===== 頭上のドームに浮かぶBOX（空間内の固定位置） ===== */
+.box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+/* ONのとき、首上げに合わせてフェードイン */
+.stage.is-on .box {
+  opacity: 1;
+  transition-delay: 1.2s;
+}
+
+.box-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(250px, 56vw);
+  height: min(300px, 42vh);
+  background-color: #fff;
+  background-size: cover;
+  background-position: center top;
+  border: 1px solid #222;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.10);
+  user-select: none;
+  -webkit-user-drag: none;
+  text-decoration: none;
+  animation: bob 6s ease-in-out infinite alternate;
+}
+
+@keyframes bob {
+  from { transform: translate(-50%, -50%) translateY(-7px); }
+  to   { transform: translate(-50%, -50%) translateY(7px); }
+}
+
+/* 下部のタイトル帯 */
+.box-label {
+  background: rgba(255, 255, 255, 0.9);
+  border-top: 1px solid #222;
+  padding: 10px 14px 12px;
+}
+
+.box-label h2 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+}
+
+.box-label p {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  opacity: 0.75;
+}
+
+/* ONのとき右上に出るOFFボタン */
+.off-btn {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #222;
+  color: #222;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  font-weight: bold;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.8s ease, visibility 0.8s ease, background 0.3s ease, color 0.3s ease;
+}
+
+.off-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 1.2s;
+}
+
+.off-btn:hover {
+  background: #222;
+  color: #fff;
+}
+</style>
+</head>
+<body>
+
+  <!-- 3D空間: 太陽系（足元）とBOX（頭上のドーム）が固定配置されている -->
+  <div id="stage" class="stage">
+    <div id="world" class="world">
+
+      <!-- 足元の太陽系 -->
+      <div class="floor-anchor">
+        <div class="solar-system">
+          <!-- 水・金・地・火・木・土・天・海・冥 の9軌道 -->
+          <svg class="orbits" viewBox="0 0 600 600">
+            <circle cx="300" cy="300" r="70"  />
+            <circle cx="300" cy="300" r="96"  />
+            <circle cx="300" cy="300" r="122" />
+            <circle cx="300" cy="300" r="148" />
+            <circle cx="300" cy="300" r="174" />
+            <circle cx="300" cy="300" r="200" />
+            <circle cx="300" cy="300" r="226" />
+            <circle cx="300" cy="300" r="252" />
+            <circle cx="300" cy="300" r="278" />
+          </svg>
+
+          <!-- 水星 -->
+          <div class="planet-wrap" style="width:23.333%;height:23.333%;margin:-11.6665% 0 0 -11.6665%;animation-duration:3s;animation-delay:-1s;">
+            <span class="planet" style="width:4px;height:4px;"></span>
+          </div>
+          <!-- 金星 -->
+          <div class="planet-wrap" style="width:32%;height:32%;margin:-16% 0 0 -16%;animation-duration:5s;animation-delay:-2.5s;">
+            <span class="planet" style="width:7px;height:7px;"></span>
+          </div>
+          <!-- 地球 -->
+          <div class="planet-wrap" style="width:40.667%;height:40.667%;margin:-20.3335% 0 0 -20.3335%;animation-duration:7s;animation-delay:-3s;">
+            <span class="planet" style="width:8px;height:8px;"></span>
+          </div>
+          <!-- 火星 -->
+          <div class="planet-wrap" style="width:49.333%;height:49.333%;margin:-24.6665% 0 0 -24.6665%;animation-duration:9s;animation-delay:-5s;">
+            <span class="planet" style="width:6px;height:6px;"></span>
+          </div>
+          <!-- 木星 -->
+          <div class="planet-wrap" style="width:58%;height:58%;margin:-29% 0 0 -29%;animation-duration:12s;animation-delay:-7s;">
+            <span class="planet" style="width:14px;height:14px;"></span>
+          </div>
+          <!-- 土星 -->
+          <div class="planet-wrap" style="width:66.667%;height:66.667%;margin:-33.3335% 0 0 -33.3335%;animation-duration:16s;animation-delay:-4s;">
+            <span class="planet" style="width:12px;height:12px;"></span>
+          </div>
+          <!-- 天王星 -->
+          <div class="planet-wrap" style="width:75.333%;height:75.333%;margin:-37.6665% 0 0 -37.6665%;animation-duration:20s;animation-delay:-12s;">
+            <span class="planet" style="width:9px;height:9px;"></span>
+          </div>
+          <!-- 海王星 -->
+          <div class="planet-wrap" style="width:84%;height:84%;margin:-42% 0 0 -42%;animation-duration:25s;animation-delay:-20s;">
+            <span class="planet" style="width:9px;height:9px;"></span>
+          </div>
+          <!-- 冥王星 -->
+          <div class="planet-wrap" style="width:92.667%;height:92.667%;margin:-46.3335% 0 0 -46.3335%;animation-duration:30s;animation-delay:-8s;">
+            <span class="planet" style="width:3px;height:3px;"></span>
+          </div>
+
+          <button id="sunToggle" class="sun" type="button" aria-pressed="false">OFF</button>
+        </div>
+      </div>
+
+      <!--
+        頭上のドームに浮かぶBOX。
+        <div class="box"> を追加するだけで自動でいい感じに並び直ります。
+      -->
+      <div class="box">
+        <a class="box-inner" href="https://ruto18.github.io/payment-calc-web/" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/payment-calc.png')">
+          <span class="box-label">
+            <h2>銭げ婆ぁ！</h2>
+            <p>お釣りの枚数計算サイト。サイトの番人である"銭げ婆ぁ！"がいくら払うといくらのお金が何枚返ってくるのかを教えてくれます。</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ruto18.github.io/nazonazo/" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/nazonazo.png')">
+          <span class="box-label">
+            <h2>なっぞなっぞ</h2>
+            <p>僕がなにか謎解きを思いついたら投稿するサイト</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ha-ruto.itch.io/sunlight-game" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/sunlight-2d.png')">
+          <span class="box-label">
+            <h2>日照権争奪ゲーム(2D)</h2>
+            <p>最後に日当たりを多く確保できていた方が勝ちなオリジナルボードゲームの2D版</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ha-ruto.itch.io/sunlight-game-3d-for-pc" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/sunlight-3d.png')">
+          <span class="box-label">
+            <h2>日照権争奪ゲーム(3D)</h2>
+            <p>最後に日当たりを多く確保できていた方が勝ちなオリジナルボードゲームの3D版</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ruto18.github.io/translator/" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/translator.png')">
+          <span class="box-label">
+            <p>見たことある人ならわかるかもしれない記号の羅列を日本語に翻訳するサイト</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ruto18.github.io/chameleon-360-viewer/" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/bonsai.png')">
+          <span class="box-label">
+            <h2>同調の凡栽(ぼんさい)</h2>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://ruto18.github.io/duplicate-japanese-place-names/" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/placenames.png')">
+          <span class="box-label">
+            <h2>日本の地名検索サイト</h2>
+            <p>検索した地名の文献や幾つ存在するかなどを検索できるサイト</p>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://note.com/mushikingda" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/note.png')">
+          <span class="box-label">
+            <h2>note</h2>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://www.instagram.com/route_no8?igsh=MXFhbjV3MzgzZnczeg%3D%3D&amp;utm_source=qr" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/instagram.png')">
+          <span class="box-label">
+            <h2>Instagram</h2>
+          </span>
+        </a>
+      </div>
+      <div class="box">
+        <a class="box-inner" href="https://x.com/ruuutoooo_8?s=11&amp;t=6p1_8ixxIdPW9qCgNzsHeQ" target="_blank" rel="noopener" draggable="false" style="background-image:url('img/x.png')">
+          <span class="box-label">
+            <h2>X</h2>
+          </span>
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- OFFに戻るボタン -->
+  <button id="offBtn" class="off-btn" type="button">OFF</button>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var stage = document.getElementById("stage");
+  var world = document.getElementById("world");
+  var sunToggle = document.getElementById("sunToggle");
+  var offBtn = document.getElementById("offBtn");
+
+  var PERSPECTIVE = 900; // .stage の perspective と合わせる
+  var RADIUS = 850;      // BOXドームの半径
+
+  /* ===== ON / OFF =====
+     閲覧者はずっと太陽の真上（高さ900px）に立っている。
+     OFF = 首を下げて足元の太陽系を見ている (pitch -90)
+     ON  = 首を持ち上げて見上げた状態 (pitch +25) */
+  function turnOn() {
+    sunToggle.textContent = "ON";
+    sunToggle.setAttribute("aria-pressed", "true");
+    stage.classList.add("is-on");
+    offBtn.classList.add("is-visible");
+    /* 最初のBOX（仰角firstBoxElev・方位0）が画面中央に来る角度まで首を上げる */
+    animateView(firstBoxElev, 0, 2400, function () {
+      stage.classList.add("is-live");
+    });
+  }
+
+  function turnOff() {
+    sunToggle.textContent = "OFF";
+    sunToggle.setAttribute("aria-pressed", "false");
+    stage.classList.remove("is-on");
+    stage.classList.remove("is-live");
+    offBtn.classList.remove("is-visible");
+    animateView(-90, 0, 1800);
+  }
+
+  sunToggle.addEventListener("click", turnOn);
+  offBtn.addEventListener("click", turnOff);
+
+  /* ===== ドーム配置 =====
+     フィボナッチ配置で頭上の半球に均等にばらまく。
+     BOXを増減しても layout() が自動で並び直す。 */
+  var GOLDEN_ANGLE = 137.508;
+  var firstBoxElev = 25; // 最初のBOXの仰角。layout() が実際の値で更新する
+
+  function layout() {
+    var boxes = world.querySelectorAll(".box");
+    var n = boxes.length;
+    for (var i = 0; i < n; i++) {
+      var t = (i + 0.5) / n;
+      var sinE = 0.30 + t * 0.60;
+      var elev = Math.asin(sinE) * 180 / Math.PI;
+      var azim = i * GOLDEN_ANGLE;
+      if (i === 0) firstBoxElev = elev;
+      boxes[i].style.transform =
+        "rotateY(" + azim + "deg)" +
+        " rotateX(" + (-elev) + "deg)" +
+        " translateZ(" + (-RADIUS) + "px)";
+      var inner = boxes[i].querySelector(".box-inner");
+      if (inner) {
+        inner.style.animationDuration = (5 + (i % 4) * 1.3) + "s";
+        inner.style.animationDelay = -(i * 1.7) + "s";
+      }
+    }
+  }
+
+  new MutationObserver(layout).observe(world, { childList: true });
+
+  /* ===== 視点操作（立ち位置固定・首＝眼球の回転のみ） ===== */
+  var yaw = 0;      // 左右 360度
+  var pitch = -90;  // 上下 -90(足元)〜+90(真上)。ページを開いた時は足元を見ている
+
+  function updateView() {
+    world.style.transform =
+      "translateZ(" + PERSPECTIVE + "px)" +
+      " rotateX(" + pitch + "deg)" +
+      " rotateY(" + yaw + "deg)";
+  }
+
+  /* 首をなめらかに動かす（ON/OFF切り替え時） */
+  var viewAnim = null;
+  function animateView(targetPitch, targetYaw, duration, onDone) {
+    if (viewAnim) cancelAnimationFrame(viewAnim);
+    var p0 = pitch;
+    var y0 = yaw;
+    var t0 = performance.now();
+    function frame(t) {
+      var p = Math.min(1, (t - t0) / duration);
+      var e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; // ease-in-out
+      pitch = p0 + (targetPitch - p0) * e;
+      yaw = y0 + (targetYaw - y0) * e;
+      updateView();
+      if (p < 1) {
+        viewAnim = requestAnimationFrame(frame);
+      } else {
+        viewAnim = null;
+        if (onDone) onDone();
+      }
+    }
+    viewAnim = requestAnimationFrame(frame);
+  }
+
+  layout();
+  updateView();
+
+  /* ドラッグで見渡す（ONの導入が終わってから有効） */
+  var isDragging = false;
+  var lastX = 0;
+  var lastY = 0;
+  var dragDist = 0; // ドラッグ移動量。大きいときはリンクのクリックを無効化
+
+  stage.addEventListener("pointerdown", function (e) {
+    dragDist = 0;
+    if (!stage.classList.contains("is-live")) return;
+    isDragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    stage.classList.add("is-dragging");
+    /* setPointerCapture はリンクへの click を奪うので使わない */
+  });
+
+  stage.addEventListener("pointermove", function (e) {
+    if (!isDragging) return;
+    var dx = e.clientX - lastX;
+    var dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    dragDist += Math.abs(dx) + Math.abs(dy);
+    yaw -= dx * 0.22;
+    pitch += dy * 0.22;
+    pitch = Math.max(-90, Math.min(90, pitch));
+    updateView();
+  });
+
+  /* 視点を回した直後のクリックでリンクが開かないようにする */
+  stage.addEventListener("click", function (e) {
+    if (dragDist > 8) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  function endDrag() {
+    if (!isDragging) return;
+    isDragging = false;
+    stage.classList.remove("is-dragging");
+  }
+
+  /* キャプチャしないぶん、画面外で指を離した場合も確実に終了させる */
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+
+  /* ホイール: 縦で見上げ/見下ろし、横で左右 */
+  stage.addEventListener("wheel", function (e) {
+    if (!stage.classList.contains("is-live")) return;
+    e.preventDefault();
+    yaw += e.deltaX * 0.1;
+    pitch += e.deltaY * 0.1;
+    pitch = Math.max(-90, Math.min(90, pitch));
+    updateView();
+  }, { passive: false });
+
+  /* 動作確認用（コンソールから視点を動かせる） */
+  window.__setView = function (p, y) {
+    pitch = Math.max(-90, Math.min(90, p));
+    yaw = y;
+    updateView();
+  };
+});
+</script>
+</body>
+</html>
