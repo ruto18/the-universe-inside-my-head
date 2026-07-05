@@ -506,6 +506,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   stage.addEventListener("pointerdown", function (e) {
     dragDist = 0;
+    markInteraction();
     if (!stage.classList.contains("is-live")) return;
     isDragging = true;
     lastX = e.clientX;
@@ -516,6 +517,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   stage.addEventListener("pointermove", function (e) {
     if (!isDragging) return;
+    markInteraction();
     var dx = e.clientX - lastX;
     var dy = e.clientY - lastY;
     lastX = e.clientX;
@@ -538,6 +540,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function endDrag() {
     if (!isDragging) return;
     isDragging = false;
+    markInteraction();
     stage.classList.remove("is-dragging");
   }
 
@@ -548,12 +551,41 @@ document.addEventListener("DOMContentLoaded", function () {
   /* ホイール: 縦で見上げ/見下ろし、横で左右 */
   stage.addEventListener("wheel", function (e) {
     if (!stage.classList.contains("is-live")) return;
+    markInteraction();
     e.preventDefault();
     yaw += e.deltaX * 0.1;
     pitch += e.deltaY * 0.1;
     pitch = Math.max(-90, Math.min(90, pitch));
     updateView();
   }, { passive: false });
+
+  /* ===== 放置すると自動でゆっくり右回転 ===== */
+  var lastInteractionTime = performance.now();
+  var IDLE_DELAY = 3000;   // 3秒操作がなかったら
+  var AUTO_ROTATE_SPEED = 6; // 度/秒
+
+  function markInteraction() {
+    lastInteractionTime = performance.now();
+  }
+
+  var autoRotateLastFrame = null;
+  function autoRotateLoop(t) {
+    if (autoRotateLastFrame === null) autoRotateLastFrame = t;
+    var dt = (t - autoRotateLastFrame) / 1000;
+    autoRotateLastFrame = t;
+
+    if (
+      stage.classList.contains("is-live") &&
+      !isDragging &&
+      !viewAnim &&
+      (t - lastInteractionTime) > IDLE_DELAY
+    ) {
+      yaw += AUTO_ROTATE_SPEED * dt;
+      updateView();
+    }
+    requestAnimationFrame(autoRotateLoop);
+  }
+  requestAnimationFrame(autoRotateLoop);
 
   /* 動作確認用（コンソールから視点を動かせる） */
   window.__setView = function (p, y) {
