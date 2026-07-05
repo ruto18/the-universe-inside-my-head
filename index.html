@@ -121,11 +121,6 @@ html, body {
 .hand-minute { stroke-width: 3.5; opacity: 0.9; }
 .hand-second { stroke-width: 1.6; opacity: 0.8; }
 
-.clock-hub {
-  fill: var(--line);
-  transition: fill 1.8s ease;
-}
-
 /* 反時計回りの公転 */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -283,12 +278,13 @@ html, body {
             <circle cx="300" cy="300" r="252" />
             <circle cx="300" cy="300" r="278" />
 
-            <!-- 端末の時刻に連動する時計の針（太陽系の中心＝時計の中心） -->
+            <!-- 端末の時刻に連動する時計の針。
+                 中心（太陽）は時計の中心だが、針は太陽の円の縁から外へ伸びる。
+                 起点 y1=252 は中心(300)から半径48＝太陽の縁。回転は中心(300,300)まわり。 -->
             <g class="clock">
-              <line id="handHour"   class="clock-hand hand-hour"   x1="300" y1="300" x2="300" y2="190" />
-              <line id="handMinute" class="clock-hand hand-minute" x1="300" y1="300" x2="300" y2="125" />
-              <line id="handSecond" class="clock-hand hand-second" x1="300" y1="335" x2="300" y2="55" />
-              <circle class="clock-hub" cx="300" cy="300" r="5" />
+              <line id="handHour"   class="clock-hand hand-hour"   x1="300" y1="252" x2="300" y2="158" />
+              <line id="handMinute" class="clock-hand hand-minute" x1="300" y1="252" x2="300" y2="102" />
+              <line id="handSecond" class="clock-hand hand-second" x1="300" y1="252" x2="300" y2="40" />
             </g>
           </svg>
 
