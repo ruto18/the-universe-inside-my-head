@@ -110,6 +110,22 @@ html, body {
   transition: background 1.8s ease;
 }
 
+/* ===== 時計の針（太陽系の中心に固定） ===== */
+.clock-hand {
+  stroke: var(--line);
+  stroke-linecap: round;
+  transition: stroke 1.8s ease;
+}
+
+.hand-hour   { stroke-width: 5; opacity: 0.95; }
+.hand-minute { stroke-width: 3.5; opacity: 0.9; }
+.hand-second { stroke-width: 1.6; opacity: 0.8; }
+
+.clock-hub {
+  fill: var(--line);
+  transition: fill 1.8s ease;
+}
+
 /* 反時計回りの公転 */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -266,6 +282,14 @@ html, body {
             <circle cx="300" cy="300" r="226" />
             <circle cx="300" cy="300" r="252" />
             <circle cx="300" cy="300" r="278" />
+
+            <!-- 端末の時刻に連動する時計の針（太陽系の中心＝時計の中心） -->
+            <g class="clock">
+              <line id="handHour"   class="clock-hand hand-hour"   x1="300" y1="300" x2="300" y2="190" />
+              <line id="handMinute" class="clock-hand hand-minute" x1="300" y1="300" x2="300" y2="125" />
+              <line id="handSecond" class="clock-hand hand-second" x1="300" y1="335" x2="300" y2="55" />
+              <circle class="clock-hub" cx="300" cy="300" r="5" />
+            </g>
           </svg>
 
           <!-- 水星 -->
@@ -561,6 +585,23 @@ document.addEventListener("DOMContentLoaded", function () {
     updateView();
   }, { passive: false });
 
+  /* ===== 端末の時刻に連動する時計（太陽系の中心＝時計の中心） ===== */
+  var handHour = document.getElementById("handHour");
+  var handMinute = document.getElementById("handMinute");
+  var handSecond = document.getElementById("handSecond");
+
+  function updateClock() {
+    var now = new Date();
+    var sec = now.getSeconds() + now.getMilliseconds() / 1000;
+    var min = now.getMinutes() + sec / 60;
+    var hr = (now.getHours() % 12) + min / 60;
+    handSecond.setAttribute("transform", "rotate(" + (sec * 6) + " 300 300)");
+    handMinute.setAttribute("transform", "rotate(" + (min * 6) + " 300 300)");
+    handHour.setAttribute("transform", "rotate(" + (hr * 30) + " 300 300)");
+  }
+  updateClock();
+  window.__updateClock = updateClock;
+
   /* ===== 放置すると自動でゆっくりフワフワ回転 ===== */
   var lastInteractionTime = performance.now();
   var IDLE_DELAY = 3000;       // 3秒操作がなかったら
@@ -576,6 +617,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (autoRotateLastFrame === null) autoRotateLastFrame = t;
     var dt = (t - autoRotateLastFrame) / 1000;
     autoRotateLastFrame = t;
+
+    updateClock();
 
     var idle =
       stage.classList.contains("is-live") &&
