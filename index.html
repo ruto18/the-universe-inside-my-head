@@ -464,12 +464,14 @@ document.addEventListener("DOMContentLoaded", function () {
   /* ===== 視点操作（立ち位置固定・首＝眼球の回転のみ） ===== */
   var yaw = 0;      // 左右 360度
   var pitch = -90;  // 上下 -90(足元)〜+90(真上)。ページを開いた時は足元を見ている
+  var floatPitch = 0; // 自動回転中のフワフワした揺らぎ（上下）
+  var floatYaw = 0;   // 同（左右）
 
   function updateView() {
     world.style.transform =
       "translateZ(" + PERSPECTIVE + "px)" +
-      " rotateX(" + pitch + "deg)" +
-      " rotateY(" + yaw + "deg)";
+      " rotateX(" + (pitch + floatPitch) + "deg)" +
+      " rotateY(" + (yaw + floatYaw) + "deg)";
   }
 
   /* 首をなめらかに動かす（ON/OFF切り替え時） */
@@ -559,10 +561,11 @@ document.addEventListener("DOMContentLoaded", function () {
     updateView();
   }, { passive: false });
 
-  /* ===== 放置すると自動でゆっくり右回転 ===== */
+  /* ===== 放置すると自動でゆっくりフワフワ回転 ===== */
   var lastInteractionTime = performance.now();
-  var IDLE_DELAY = 3000;   // 3秒操作がなかったら
-  var AUTO_ROTATE_SPEED = 6; // 度/秒
+  var IDLE_DELAY = 3000;       // 3秒操作がなかったら
+  var AUTO_ROTATE_SPEED = 2.2; // 度/秒（ゆっくり）
+  var autoRamp = 0;            // 0→1 に徐々に立ち上げて、動き出し／止まりをなめらかに
 
   function markInteraction() {
     lastInteractionTime = performance.now();
@@ -574,13 +577,26 @@ document.addEventListener("DOMContentLoaded", function () {
     var dt = (t - autoRotateLastFrame) / 1000;
     autoRotateLastFrame = t;
 
-    if (
+    var idle =
       stage.classList.contains("is-live") &&
       !isDragging &&
       !viewAnim &&
-      (t - lastInteractionTime) > IDLE_DELAY
-    ) {
-      yaw += AUTO_ROTATE_SPEED * dt;
+      (t - lastInteractionTime) > IDLE_DELAY;
+
+    // なめらかに加速・減速させる係数（時定数およそ1.3秒）
+    autoRamp += ((idle ? 1 : 0) - autoRamp) * Math.min(1, dt * 0.8);
+
+    if (autoRamp > 0.001) {
+      // ゆっくり右回転
+      yaw += AUTO_ROTATE_SPEED * autoRamp * dt;
+      // フワフワと漂うような上下・左右の揺らぎ（周期の違う正弦波を重ねる）
+      var s = t / 1000;
+      floatPitch = (Math.sin(s * 0.45) * 1.6 + Math.sin(s * 0.23) * 0.9) * autoRamp;
+      floatYaw = (Math.sin(s * 0.37 + 1.0) * 1.4 + Math.sin(s * 0.19) * 0.8) * autoRamp;
+      updateView();
+    } else if (floatPitch !== 0 || floatYaw !== 0) {
+      floatPitch = 0;
+      floatYaw = 0;
       updateView();
     }
     requestAnimationFrame(autoRotateLoop);
