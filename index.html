@@ -564,7 +564,7 @@ document.addEventListener("DOMContentLoaded", function () {
   /* ===== 放置すると自動でゆっくりフワフワ回転 ===== */
   var lastInteractionTime = performance.now();
   var IDLE_DELAY = 3000;       // 3秒操作がなかったら
-  var AUTO_ROTATE_SPEED = 0.6; // 度/秒（とてもゆっくり）
+  var AUTO_ROTATE_SPEED = 1.0; // 度/秒
   var autoRamp = 0;            // 0→1 に徐々に立ち上げて、動き出し／止まりをなめらかに
 
   function markInteraction() {
