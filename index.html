@@ -255,6 +255,98 @@ html, body {
   background: #222;
   color: #fff;
 }
+
+/* ホイッスルボタン（OFFボタンの左隣。ONのとき表示） */
+.whistle-btn {
+  position: fixed;
+  top: 24px;
+  right: 96px; /* OFFボタン(right:24 + 幅56 + 余白16) の左隣 */
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #222;
+  color: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.8s ease, visibility 0.8s ease, background 0.3s ease, color 0.3s ease;
+}
+
+.whistle-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 1.2s;
+}
+
+.whistle-btn:hover {
+  background: #222;
+  color: #fff;
+}
+
+/* 押している間の合図 */
+.whistle-btn.is-active {
+  background: #222;
+  color: #fff;
+}
+
+/* ===== 整列モード（スクロール可能なグリッド） ===== */
+.grid-view {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #fff;
+  padding: 96px 20px 40px;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr); /* スマホ：2列 */
+  align-content: start;
+}
+
+body.is-grid .grid-view {
+  display: grid;
+}
+
+@media (min-width: 768px) {
+  .grid-view {
+    grid-template-columns: repeat(4, 1fr); /* PC：4列 */
+    gap: 22px;
+    padding: 100px 40px 48px;
+  }
+}
+
+/* グリッドに入ったBOXは3D配置を解除して普通のカードにする */
+body.is-grid .grid-view .box {
+  position: static;
+  transform: none !important;
+  opacity: 1 !important;
+  width: 100%;
+  height: auto;
+}
+
+body.is-grid .grid-view .box-inner {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  height: 210px;
+  transform: none;
+  animation: none;
+}
+
+@media (min-width: 768px) {
+  body.is-grid .grid-view .box-inner {
+    height: 240px;
+  }
+}
 </style>
 </head>
 <body>
@@ -412,6 +504,22 @@ html, body {
     </div>
   </div>
 
+  <!-- 整列モード：BOXがここに移動してスクロール可能なグリッドで並ぶ -->
+  <div id="gridView" class="grid-view"></div>
+
+  <!-- ホイッスル：BOXを整列⇔ドームに切り替え -->
+  <button id="whistleBtn" class="whistle-btn" type="button" aria-label="BOXを整列" aria-pressed="false">
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+      <!-- 審判ホイッスルの線画：大きな丸い空気室＋斜めのマウスピース＋境目線＋首ひもリング -->
+      <circle cx="15.3" cy="12.1" r="5.15" />
+      <path d="M13.4 7.05L2.1 8.9L2.5 14.1L10.9 15.3" />
+      <path d="M7.5 8.1L7.9 14.8" stroke-width="1.6" />
+      <circle cx="18.7" cy="5.9" r="1.8" stroke-width="1.5" />
+    </svg>
+  </button>
+
   <!-- OFFに戻るボタン -->
   <button id="offBtn" class="off-btn" type="button">OFF</button>
 
@@ -421,6 +529,8 @@ document.addEventListener("DOMContentLoaded", function () {
   var world = document.getElementById("world");
   var sunToggle = document.getElementById("sunToggle");
   var offBtn = document.getElementById("offBtn");
+  var whistleBtn = document.getElementById("whistleBtn");
+  var gridView = document.getElementById("gridView");
 
   var PERSPECTIVE = 900; // .stage の perspective と合わせる
   var RADIUS = 850;      // BOXドームの半径
@@ -434,6 +544,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sunToggle.setAttribute("aria-pressed", "true");
     stage.classList.add("is-on");
     offBtn.classList.add("is-visible");
+    whistleBtn.classList.add("is-visible");
     /* 最初のBOX（仰角firstBoxElev・方位0）が画面中央に来る角度まで首を上げる */
     animateView(firstBoxElev, 0, 2400, function () {
       stage.classList.add("is-live");
@@ -441,16 +552,209 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function turnOff() {
+    if (isGrid) exitGrid(true); // 整列中なら無音でドームへ戻す
     sunToggle.textContent = "OFF";
     sunToggle.setAttribute("aria-pressed", "false");
     stage.classList.remove("is-on");
     stage.classList.remove("is-live");
     offBtn.classList.remove("is-visible");
+    whistleBtn.classList.remove("is-visible");
     animateView(-90, 0, 1800);
   }
 
   sunToggle.addEventListener("click", turnOn);
   offBtn.addEventListener("click", turnOff);
+
+  /* ===== ホイッスル：整列（グリッド）⇔ ドーム ===== */
+  var isGrid = false;
+  var boxAnimating = false;
+
+  function enterGrid() {
+    isGrid = true;
+    whistleBtn.setAttribute("aria-pressed", "true");
+    // BOXをドーム(#world)から整列グリッド(#gridView)へ移す（DOM順＝追加順を保持）
+    var boxes = world.querySelectorAll(".box");
+    for (var i = 0; i < boxes.length; i++) gridView.appendChild(boxes[i]);
+    document.body.classList.add("is-grid");
+    gridView.scrollTop = 0;
+  }
+
+  function exitGrid() {
+    isGrid = false;
+    whistleBtn.setAttribute("aria-pressed", "false");
+    // BOXをグリッドからドームへ戻す
+    var boxes = gridView.querySelectorAll(".box");
+    for (var i = 0; i < boxes.length; i++) world.appendChild(boxes[i]);
+    document.body.classList.remove("is-grid");
+    layout(); // ドーム上に並べ直す
+  }
+
+  /* FLIP: 変更前後の画面上の位置を測り、浮いてるBOXが集まって整列（逆で散開）する動き */
+  function toggleGridAnimated(toGrid) {
+    if (boxAnimating) return;
+    boxAnimating = true;
+
+    var src = toGrid ? world : gridView;
+    var boxes = Array.prototype.slice.call(src.querySelectorAll(".box"));
+    var inners = boxes.map(function (b) { return b.querySelector(".box-inner"); });
+    var first = inners.map(function (el) { return el.getBoundingClientRect(); });
+
+    // DOMを移し替え（整列⇔ドーム）。移動後の最終位置を測る
+    if (toGrid) enterGrid(); else exitGrid();
+    var last = inners.map(function (el) { return el.getBoundingClientRect(); });
+
+    // いったん全BOXを「移動前の画面位置」に固定配置してから最終位置へ流す
+    inners.forEach(function (el, i) {
+      var f = first[i];
+      el.style.transition = "none";
+      el.style.position = "fixed";
+      el.style.margin = "0";
+      el.style.left = f.left + "px";
+      el.style.top = f.top + "px";
+      el.style.width = f.width + "px";
+      el.style.height = f.height + "px";
+      el.style.transform = "none";
+      el.style.animation = "none";
+      el.style.zIndex = "28";
+      el.style.pointerEvents = "none";
+    });
+
+    void gridView.offsetWidth; // reflow
+
+    /* 集合：キビキビ整列 / 散開：ゆっくり柔らかくフワッと戻る */
+    var dur = toGrid ? 650 : 1300;
+    var ease = toGrid
+      ? "cubic-bezier(.34,.9,.3,1)"
+      : "cubic-bezier(.25,.6,.2,1)";
+    var stagger = toGrid ? 30 : 60;
+
+    var n = inners.length;
+    var maxDelay = 0;
+    inners.forEach(function (el, i) {
+      var l = last[i];
+      // 整列時は先頭から、散開時は末尾から動き出すと自然
+      var order = toGrid ? i : (n - 1 - i);
+      var delay = order * stagger;
+      if (delay > maxDelay) maxDelay = delay;
+      el.style.transition =
+        "left " + dur + "ms " + ease + " " + delay + "ms," +
+        "top " + dur + "ms " + ease + " " + delay + "ms," +
+        "width " + dur + "ms " + ease + " " + delay + "ms," +
+        "height " + dur + "ms " + ease + " " + delay + "ms";
+      el.style.left = l.left + "px";
+      el.style.top = l.top + "px";
+      el.style.width = l.width + "px";
+      el.style.height = l.height + "px";
+    });
+
+    var totalMs = dur + maxDelay + 80;
+    setTimeout(function () {
+      inners.forEach(function (el) {
+        el.style.transition = "";
+        el.style.position = "";
+        el.style.margin = "";
+        el.style.left = "";
+        el.style.top = "";
+        el.style.width = "";
+        el.style.height = "";
+        el.style.transform = "";
+        el.style.animation = "";
+        el.style.zIndex = "";
+        el.style.pointerEvents = "";
+      });
+      boxAnimating = false;
+    }, totalMs);
+  }
+
+  whistleBtn.addEventListener("click", function () {
+    if (boxAnimating) return;
+    if (isGrid) {
+      blowWhistle(2); // ピピッ → 散らばってドームへ
+      toggleGridAnimated(false);
+    } else {
+      blowWhistle(1); // ピッ → 集まって整列
+      toggleGridAnimated(true);
+    }
+    whistleBtn.classList.add("is-active");
+    setTimeout(function () { whistleBtn.classList.remove("is-active"); }, 180);
+  });
+
+  /* ホイッスルの音（Web Audio）。審判の豆笛らしく
+     3kHz帯の芯＋豆のコロコロ振動（振幅変調）＋息のノイズで合成 */
+  var audioCtx = null;
+
+  function tweet(ctx, start, dur) {
+    var master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, start);
+    master.gain.exponentialRampToValueAtTime(0.3, start + 0.012);
+    master.gain.setValueAtTime(0.3, start + Math.max(0.012, dur - 0.04));
+    master.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    master.connect(ctx.destination);
+
+    // 豆のコロコロ感：約45Hzで音量を揺らす
+    var trem = ctx.createGain();
+    trem.gain.value = 0.72;
+    var lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 44 + Math.random() * 8;
+    var lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.28;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(trem.gain);
+    trem.connect(master);
+    lfo.start(start);
+    lfo.stop(start + dur);
+
+    // 芯になる笛の音：わずかにずれた2つの高音（うなりで厚みが出る）
+    [3120, 3260].forEach(function (f) {
+      var osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(f * 0.97, start);
+      osc.frequency.linearRampToValueAtTime(f, start + 0.03);
+      var g = ctx.createGain();
+      g.gain.value = 0.16;
+      osc.connect(g);
+      g.connect(trem);
+      osc.start(start);
+      osc.stop(start + dur);
+    });
+
+    // 息のノイズ：3kHz中心のバンドパスをかけたホワイトノイズ
+    var len = Math.ceil(ctx.sampleRate * dur);
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var data = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    var noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    var bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 3200;
+    bp.Q.value = 6;
+    var ng = ctx.createGain();
+    ng.gain.value = 0.5;
+    noise.connect(bp);
+    bp.connect(ng);
+    ng.connect(trem);
+    noise.start(start);
+    noise.stop(start + dur);
+  }
+
+  function blowWhistle(times) {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = audioCtx || new Ctx();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      var t0 = audioCtx.currentTime + 0.02;
+      if (times === 1) {
+        tweet(audioCtx, t0, 0.3);           // ピーッ
+      } else {
+        for (var i = 0; i < times; i++) {
+          tweet(audioCtx, t0 + i * 0.17, 0.12); // ピッピッ
+        }
+      }
+    } catch (e) {}
+  }
 
   /* ===== ドーム配置 =====
      フィボナッチ配置で頭上の半球に均等にばらまく。
@@ -618,6 +922,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var idle =
       stage.classList.contains("is-live") &&
+      !isGrid &&
       !isDragging &&
       !viewAnim &&
       (t - lastInteractionTime) > IDLE_DELAY;
