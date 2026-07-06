@@ -603,20 +603,28 @@ document.addEventListener("DOMContentLoaded", function () {
     if (toGrid) enterGrid(); else exitGrid();
     var last = inners.map(function (el) { return el.getBoundingClientRect(); });
 
-    // いったん全BOXを「移動前の画面位置」に固定配置してから最終位置へ流す
+    /* 最終位置に固定配置し、transform で「移動前の位置・大きさ」から戻す。
+       transform だけを動かすので GPU 合成のみで済み、再レイアウトが起きず軽い
+       （left/top/width/height をアニメすると毎フレーム再レイアウト＋画像再描画が
+        走り、スマホではタブがクラッシュすることがある） */
     inners.forEach(function (el, i) {
       var f = first[i];
+      var l = last[i];
       el.style.transition = "none";
       el.style.position = "fixed";
       el.style.margin = "0";
-      el.style.left = f.left + "px";
-      el.style.top = f.top + "px";
-      el.style.width = f.width + "px";
-      el.style.height = f.height + "px";
-      el.style.transform = "none";
+      el.style.left = l.left + "px";
+      el.style.top = l.top + "px";
+      el.style.width = l.width + "px";
+      el.style.height = l.height + "px";
+      el.style.transformOrigin = "0 0";
+      el.style.transform =
+        "translate(" + (f.left - l.left) + "px," + (f.top - l.top) + "px)" +
+        " scale(" + (f.width / l.width) + "," + (f.height / l.height) + ")";
       el.style.animation = "none";
       el.style.zIndex = "28";
       el.style.pointerEvents = "none";
+      el.style.willChange = "transform";
     });
 
     void gridView.offsetWidth; // reflow
@@ -631,20 +639,12 @@ document.addEventListener("DOMContentLoaded", function () {
     var n = inners.length;
     var maxDelay = 0;
     inners.forEach(function (el, i) {
-      var l = last[i];
       // 整列時は先頭から、散開時は末尾から動き出すと自然
       var order = toGrid ? i : (n - 1 - i);
       var delay = order * stagger;
       if (delay > maxDelay) maxDelay = delay;
-      el.style.transition =
-        "left " + dur + "ms " + ease + " " + delay + "ms," +
-        "top " + dur + "ms " + ease + " " + delay + "ms," +
-        "width " + dur + "ms " + ease + " " + delay + "ms," +
-        "height " + dur + "ms " + ease + " " + delay + "ms";
-      el.style.left = l.left + "px";
-      el.style.top = l.top + "px";
-      el.style.width = l.width + "px";
-      el.style.height = l.height + "px";
+      el.style.transition = "transform " + dur + "ms " + ease + " " + delay + "ms";
+      el.style.transform = "translate(0,0) scale(1,1)";
     });
 
     var totalMs = dur + maxDelay + 80;
@@ -658,10 +658,13 @@ document.addEventListener("DOMContentLoaded", function () {
         el.style.width = "";
         el.style.height = "";
         el.style.transform = "";
+        el.style.transformOrigin = "";
         el.style.animation = "";
         el.style.zIndex = "";
         el.style.pointerEvents = "";
+        el.style.willChange = "";
       });
+      if (!toGrid) layout(); // 浮遊アニメの時差などを復元
       boxAnimating = false;
     }, totalMs);
   }
