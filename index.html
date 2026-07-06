@@ -222,6 +222,14 @@ html, body {
   opacity: 0.75;
 }
 
+/* 集合/散開アニメ用レイヤー。変形なしの素の座標系でカードを飛ばす */
+.flip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none;
+}
+
 /* ONのとき右上に出るOFFボタン */
 .off-btn {
   position: fixed;
@@ -507,6 +515,9 @@ body.is-grid .grid-view .box-inner {
   <!-- 整列モード：BOXがここに移動してスクロール可能なグリッドで並ぶ -->
   <div id="gridView" class="grid-view"></div>
 
+  <!-- 集合/散開アニメ専用の無変形レイヤー（3D空間の外でカードを飛ばす） -->
+  <div id="flipLayer" class="flip-layer"></div>
+
   <!-- ホイッスル：BOXを整列⇔ドームに切り替え -->
   <button id="whistleBtn" class="whistle-btn" type="button" aria-label="BOXを整列" aria-pressed="false">
     <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"
@@ -531,6 +542,7 @@ document.addEventListener("DOMContentLoaded", function () {
   var offBtn = document.getElementById("offBtn");
   var whistleBtn = document.getElementById("whistleBtn");
   var gridView = document.getElementById("gridView");
+  var flipLayer = document.getElementById("flipLayer");
 
   var PERSPECTIVE = 900; // .stage の perspective と合わせる
   var RADIUS = 850;      // BOXドームの半径
@@ -603,15 +615,17 @@ document.addEventListener("DOMContentLoaded", function () {
     if (toGrid) enterGrid(); else exitGrid();
     var last = inners.map(function (el) { return el.getBoundingClientRect(); });
 
-    /* 最終位置に固定配置し、transform で「移動前の位置・大きさ」から戻す。
-       transform だけを動かすので GPU 合成のみで済み、再レイアウトが起きず軽い
-       （left/top/width/height をアニメすると毎フレーム再レイアウト＋画像再描画が
-        走り、スマホではタブがクラッシュすることがある） */
+    /* カードを3D空間の外の無変形レイヤーへ移し、最終位置に置いて
+       transform で「移動前の位置・大きさ」から戻す。
+       ・transform のみのアニメ → 再レイアウトなし（GPU合成だけ）
+       ・3D変形された祖先の外 → 遠近投影で巨大レイヤーが生成されない
+       （どちらもスマホでのタブクラッシュ対策） */
     inners.forEach(function (el, i) {
       var f = first[i];
       var l = last[i];
+      flipLayer.appendChild(el);
       el.style.transition = "none";
-      el.style.position = "fixed";
+      el.style.position = "absolute";
       el.style.margin = "0";
       el.style.left = l.left + "px";
       el.style.top = l.top + "px";
@@ -622,12 +636,10 @@ document.addEventListener("DOMContentLoaded", function () {
         "translate(" + (f.left - l.left) + "px," + (f.top - l.top) + "px)" +
         " scale(" + (f.width / l.width) + "," + (f.height / l.height) + ")";
       el.style.animation = "none";
-      el.style.zIndex = "28";
-      el.style.pointerEvents = "none";
       el.style.willChange = "transform";
     });
 
-    void gridView.offsetWidth; // reflow
+    void flipLayer.offsetWidth; // reflow
 
     /* 集合：キビキビ整列 / 散開：ゆっくり柔らかくフワッと戻る */
     var dur = toGrid ? 650 : 1300;
@@ -649,7 +661,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var totalMs = dur + maxDelay + 80;
     setTimeout(function () {
-      inners.forEach(function (el) {
+      inners.forEach(function (el, i) {
         el.style.transition = "";
         el.style.position = "";
         el.style.margin = "";
@@ -660,9 +672,8 @@ document.addEventListener("DOMContentLoaded", function () {
         el.style.transform = "";
         el.style.transformOrigin = "";
         el.style.animation = "";
-        el.style.zIndex = "";
-        el.style.pointerEvents = "";
         el.style.willChange = "";
+        boxes[i].appendChild(el); // 元のBOXへ戻す
       });
       if (!toGrid) layout(); // 浮遊アニメの時差などを復元
       boxAnimating = false;
