@@ -148,14 +148,17 @@ html, body {
   transition: background 0.3s ease, color 0.3s ease, border-color 1.8s ease;
 }
 
-.sun:hover {
-  background: #fff;
-  color: #000;
-}
+/* hover装飾はマウス環境のみ（タッチではタップ後にhoverが貼り付くため） */
+@media (hover: hover) {
+  .sun:hover {
+    background: #fff;
+    color: #000;
+  }
 
-.is-on .sun:hover {
-  background: transparent;
-  color: var(--line);
+  .is-on .sun:hover {
+    background: transparent;
+    color: var(--line);
+  }
 }
 
 /* ===== 頭上のドームに浮かぶBOX（空間内の固定位置） ===== */
@@ -281,9 +284,11 @@ html, body {
   transition-delay: 1.2s;
 }
 
-.off-btn:hover {
-  background: #222;
-  color: #fff;
+@media (hover: hover) {
+  .off-btn:hover {
+    background: #222;
+    color: #fff;
+  }
 }
 
 /* ホイッスルボタン（OFFボタンの左隣。ONのとき表示） */
@@ -315,9 +320,11 @@ html, body {
   transition-delay: 1.2s;
 }
 
-.whistle-btn:hover {
-  background: #222;
-  color: #fff;
+@media (hover: hover) {
+  .whistle-btn:hover {
+    background: #222;
+    color: #fff;
+  }
 }
 
 /* 押している間の合図 */
