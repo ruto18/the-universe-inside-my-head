@@ -235,6 +235,23 @@ html, body {
   box-shadow: none;
 }
 
+/* シーン転換用の白幕。opacityのみをアニメーション（GPU合成のみで軽い） */
+.white-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: #fff;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.9s ease, visibility 0.9s ease;
+}
+
+.white-fade.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ONのとき右上に出るOFFボタン */
 .off-btn {
   position: fixed;
@@ -326,6 +343,16 @@ html, body {
 
 body.is-grid .grid-view {
   display: grid;
+}
+
+/* ドームへ戻るシーン転換：グリッド全体がズームアップしながら白へ消えていく */
+.grid-view {
+  transform-origin: 50% 45%;
+  transition: transform 1s cubic-bezier(.4, 0, .7, 1);
+}
+
+body.is-grid .grid-view.is-zooming {
+  transform: scale(1.22);
 }
 
 @media (min-width: 768px) {
@@ -520,8 +547,11 @@ body.is-grid .grid-view .box-inner {
   <!-- 整列モード：BOXがここに移動してスクロール可能なグリッドで並ぶ -->
   <div id="gridView" class="grid-view"></div>
 
-  <!-- 集合/散開アニメ専用の無変形レイヤー（3D空間の外でカードを飛ばす） -->
+  <!-- 集合アニメ専用の無変形レイヤー（3D空間の外でカードを飛ばす） -->
   <div id="flipLayer" class="flip-layer"></div>
+
+  <!-- シーン転換用の白幕（グリッド→ドームの切り替えで使用） -->
+  <div id="whiteFade" class="white-fade"></div>
 
   <!-- ホイッスル：BOXを整列⇔ドームに切り替え -->
   <button id="whistleBtn" class="whistle-btn" type="button" aria-label="BOXを整列" aria-pressed="false">
@@ -548,6 +578,7 @@ document.addEventListener("DOMContentLoaded", function () {
   var whistleBtn = document.getElementById("whistleBtn");
   var gridView = document.getElementById("gridView");
   var flipLayer = document.getElementById("flipLayer");
+  var whiteFade = document.getElementById("whiteFade");
 
   var PERSPECTIVE = 900; // .stage の perspective と合わせる
   var RADIUS = 850;      // BOXドームの半径
@@ -687,11 +718,29 @@ document.addEventListener("DOMContentLoaded", function () {
     }, totalMs);
   }
 
+  /* グリッド→ドームのシーン転換：
+     グリッド全体がズームアップしながら画面が白くなり、
+     白が晴れるとドームのシーンに切り替わっている。
+     動かすのは白幕のopacityとグリッドのscaleの2つだけなので非常に軽い */
+  function exitGridCinematic() {
+    boxAnimating = true;
+    whiteFade.classList.add("is-active");   // 徐々に白へ
+    gridView.classList.add("is-zooming");   // ズームアップ
+    setTimeout(function () {
+      exitGrid();                           // 白幕の裏でドームへ切り替え
+      gridView.classList.remove("is-zooming");
+      whiteFade.classList.remove("is-active"); // 白が晴れてドームが現れる
+      setTimeout(function () {
+        boxAnimating = false;
+      }, 950);
+    }, 950);
+  }
+
   whistleBtn.addEventListener("click", function () {
     if (boxAnimating) return;
     if (isGrid) {
-      blowWhistle(2); // ピピッ → 散らばってドームへ
-      toggleGridAnimated(false);
+      blowWhistle(2); // ピピッ → 白転してドームへ
+      exitGridCinematic();
     } else {
       blowWhistle(1); // ピッ → 集まって整列
       toggleGridAnimated(true);
