@@ -907,24 +907,50 @@ document.addEventListener("DOMContentLoaded", function () {
      デフォルトはオフ（360°に斜線）。タップで有効になり、
      端末の向き（deviceorientation）に合わせて視点が動く。 */
   var gyroActive = false;
-  var gyroBaseAlpha = null; // 有効化した瞬間の方位を基準に、現在の視点から続きで回す
-  var gyroBaseYaw = 0;
+  var gyroPrevHeading = null; // 前回の方位。有効化時の視点から続きで回すための基準
+  var gyroYawTarget = 0;
 
+  /* alpha/beta/gammaをそのまま使うと、端末を垂直に立てた姿勢で
+     ジンバルロックが起きてalphaが暴れる。回転行列から
+     「画面越しに見ている方向ベクトル」を求めれば垂直姿勢でも安定する */
   function onDeviceOrientation(e) {
-    if (!gyroActive || e.beta === null) return;
-    if (gyroBaseAlpha === null) {
-      gyroBaseAlpha = e.alpha || 0;
-      gyroBaseYaw = yaw;
+    if (!gyroActive || e.beta === null || e.gamma === null) return;
+    var a = (e.alpha || 0) * Math.PI / 180;
+    var b = e.beta * Math.PI / 180;
+    var g = e.gamma * Math.PI / 180;
+
+    // 端末の背面が向く方向（東・北・上 成分）
+    var vE = -(Math.sin(g) * Math.cos(a) + Math.cos(g) * Math.sin(b) * Math.sin(a));
+    var vN = -(Math.sin(g) * Math.sin(a) - Math.cos(g) * Math.sin(b) * Math.cos(a));
+    var vU = -(Math.cos(b) * Math.cos(g));
+
+    // 上下: ベクトルの仰角そのまま
+    var pitchTarget = Math.asin(Math.max(-1, Math.min(1, vU))) * 180 / Math.PI;
+
+    // 左右: 方位角。真上/真下付近では方位が不定になるので直前の値を保持
+    var horiz = Math.sqrt(vE * vE + vN * vN);
+    if (horiz > 0.12) {
+      var heading = Math.atan2(vE, vN) * 180 / Math.PI;
+      if (gyroPrevHeading === null) {
+        gyroPrevHeading = heading;
+        gyroYawTarget = yaw; // いまの視点から続きで回す
+      } else {
+        var d = heading - gyroPrevHeading;
+        if (d > 180) d -= 360; else if (d < -180) d += 360;
+        gyroPrevHeading = heading;
+        gyroYawTarget += d;
+      }
     }
-    // 端末を水平（画面が上）＝足元、垂直に立てる＝正面、上へ向ける＝見上げ
-    pitch = Math.max(-90, Math.min(90, e.beta - 90));
-    yaw = gyroBaseYaw + (gyroBaseAlpha - (e.alpha || 0));
+
+    // ローパスで滑らかに（センサーの細かい揺れを吸収）
+    pitch += (Math.max(-90, Math.min(90, pitchTarget)) - pitch) * 0.25;
+    yaw += (gyroYawTarget - yaw) * 0.25;
     updateView();
   }
 
   function enableGyro() {
     function start() {
-      gyroBaseAlpha = null;
+      gyroPrevHeading = null;
       gyroActive = true;
       window.addEventListener("deviceorientation", onDeviceOrientation);
       gyroBtn.classList.add("is-tracking");
