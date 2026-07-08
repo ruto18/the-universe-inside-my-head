@@ -327,6 +327,69 @@ html, body {
   }
 }
 
+/* ===== スマホ用: 端末の動きで見渡す360°ボタン（右下） ===== */
+.gyro-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #222;
+  color: #222;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  font-weight: bold;
+  display: none; /* タッチ端末でのみ表示 */
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.8s ease, visibility 0.8s ease, background 0.3s ease, color 0.3s ease;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .gyro-btn {
+    display: flex;
+  }
+}
+
+.gyro-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 1.2s;
+}
+
+/* デフォルトは「360°に斜線」＝オフ状態 */
+.gyro-btn::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: currentColor;
+  border-radius: 1px;
+  transform: rotate(-38deg);
+  transition: opacity 0.3s ease;
+}
+
+/* 有効中は斜線が消えて反転表示 */
+.gyro-btn.is-tracking::after {
+  opacity: 0;
+}
+
+.gyro-btn.is-tracking {
+  background: #222;
+  color: #fff;
+}
+
 /* 押している間の合図 */
 .whistle-btn.is-active {
   background: #222;
@@ -576,6 +639,9 @@ body.is-grid .grid-view .box-inner {
   <!-- OFFに戻るボタン -->
   <button id="offBtn" class="off-btn" type="button">OFF</button>
 
+  <!-- スマホ用: 端末の動きで360°見渡すモードの切り替え（右下） -->
+  <button id="gyroBtn" class="gyro-btn" type="button" aria-label="端末の動きで見渡す" aria-pressed="false">360°</button>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   var stage = document.getElementById("stage");
@@ -586,6 +652,7 @@ document.addEventListener("DOMContentLoaded", function () {
   var gridView = document.getElementById("gridView");
   var flipLayer = document.getElementById("flipLayer");
   var whiteFade = document.getElementById("whiteFade");
+  var gyroBtn = document.getElementById("gyroBtn");
 
   var PERSPECTIVE = 900; // .stage の perspective と合わせる
   var RADIUS = 850;      // BOXドームの半径
@@ -600,6 +667,7 @@ document.addEventListener("DOMContentLoaded", function () {
     stage.classList.add("is-on");
     offBtn.classList.add("is-visible");
     whistleBtn.classList.add("is-visible");
+    gyroBtn.classList.add("is-visible");
     /* 最初のBOX（仰角firstBoxElev・方位0）が画面中央に来る角度まで首を上げる */
     animateView(firstBoxElev, 0, 2400, function () {
       stage.classList.add("is-live");
@@ -614,6 +682,8 @@ document.addEventListener("DOMContentLoaded", function () {
     stage.classList.remove("is-live");
     offBtn.classList.remove("is-visible");
     whistleBtn.classList.remove("is-visible");
+    gyroBtn.classList.remove("is-visible");
+    disableGyro();
     animateView(-90, 0, 1800);
   }
 
@@ -833,6 +903,64 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (e) {}
   }
 
+  /* ===== スマホ用: 端末の動きで360°見渡す =====
+     デフォルトはオフ（360°に斜線）。タップで有効になり、
+     端末の向き（deviceorientation）に合わせて視点が動く。 */
+  var gyroActive = false;
+  var gyroBaseAlpha = null; // 有効化した瞬間の方位を基準に、現在の視点から続きで回す
+  var gyroBaseYaw = 0;
+
+  function onDeviceOrientation(e) {
+    if (!gyroActive || e.beta === null) return;
+    if (gyroBaseAlpha === null) {
+      gyroBaseAlpha = e.alpha || 0;
+      gyroBaseYaw = yaw;
+    }
+    // 端末を水平（画面が上）＝足元、垂直に立てる＝正面、上へ向ける＝見上げ
+    pitch = Math.max(-90, Math.min(90, e.beta - 90));
+    yaw = gyroBaseYaw + (gyroBaseAlpha - (e.alpha || 0));
+    updateView();
+  }
+
+  function enableGyro() {
+    function start() {
+      gyroBaseAlpha = null;
+      gyroActive = true;
+      window.addEventListener("deviceorientation", onDeviceOrientation);
+      gyroBtn.classList.add("is-tracking");
+      gyroBtn.setAttribute("aria-pressed", "true");
+    }
+    // iOSはユーザー操作の中で許可を求める必要がある
+    if (window.DeviceOrientationEvent &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission().then(function (state) {
+        if (state === "granted") start();
+      }).catch(function () {});
+    } else {
+      start();
+    }
+  }
+
+  function disableGyro() {
+    if (!gyroActive) {
+      gyroBtn.classList.remove("is-tracking");
+      gyroBtn.setAttribute("aria-pressed", "false");
+      return;
+    }
+    gyroActive = false;
+    window.removeEventListener("deviceorientation", onDeviceOrientation);
+    gyroBtn.classList.remove("is-tracking");
+    gyroBtn.setAttribute("aria-pressed", "false");
+  }
+
+  gyroBtn.addEventListener("click", function () {
+    if (gyroActive) {
+      disableGyro();
+    } else {
+      enableGyro();
+    }
+  });
+
   /* ===== ドーム配置 =====
      フィボナッチ配置で頭上の半球に均等にばらまく。
      BOXを増減しても layout() が自動で並び直す。 */
@@ -911,6 +1039,7 @@ document.addEventListener("DOMContentLoaded", function () {
     dragDist = 0;
     markInteraction();
     if (!stage.classList.contains("is-live")) return;
+    if (gyroActive) return; // 端末の動きで見渡し中はドラッグと競合させない
     isDragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
@@ -1002,6 +1131,7 @@ document.addEventListener("DOMContentLoaded", function () {
       stage.classList.contains("is-live") &&
       !isGrid &&
       !isDragging &&
+      !gyroActive &&
       !viewAnim &&
       (t - lastInteractionTime) > IDLE_DELAY;
 
